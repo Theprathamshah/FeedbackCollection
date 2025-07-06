@@ -3,7 +3,7 @@ provider "aws" {
 }
 
 resource "aws_s3_bucket" "my_bucket" {
-  bucket         = "frontend-deployment-bucket-mentorship"
+  bucket         = "terraform-mentoring-bucket"
   # force_destroy  = true
   # tags = {
   #   Name = "Pratham_mentorship"
@@ -69,8 +69,10 @@ data "aws_iam_policy_document" "public_read" {
     }
 
     actions = [
+      "s3:PutObject",
       "s3:GetObject",
-      "s3:ListBucket"
+      "s3:ListBucket",
+      "s3:DeleteObject"
     ]
 
     resources = [
