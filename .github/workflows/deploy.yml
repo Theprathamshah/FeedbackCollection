@@ -84,4 +84,4 @@ jobs:
 
       - name: Terraform Apply
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform apply -auto-approve
+        run: terraform apply -auto-approve -var "public_key=${{ secrets.EC2_PUBLIC_KEY }}

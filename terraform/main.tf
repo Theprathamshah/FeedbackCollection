@@ -128,45 +128,105 @@ output "website_url" {
   value = "http://${aws_s3_bucket_website_configuration.website.website_endpoint}"
 }
 
-# # 1. Configure static website hosting
-# resource "aws_s3_bucket_website_configuration" "frontend_site" {
-#   bucket = "terraform-mentoring-bucket"
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
 
-#   index_document {
-#     suffix = "index.html"
-#   }
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+}
 
-#   error_document {
-#     key = "index.html"
-#   }
-# }
+# Security Group for EC2
+resource "aws_security_group" "ec2_sg" {
+  name        = "ec2-sg"
+  description = "Allow SSH, HTTP and HTTPS"
+  vpc_id      = data.aws_vpc.default.id
 
-# # 2. Disable Block Public Access settings
-# resource "aws_s3_bucket_public_access_block" "frontend" {
-#   bucket = "terraform-mentoring-bucket"
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-#   block_public_acls       = false
-#   block_public_policy     = false
-#   ignore_public_acls      = false
-#   restrict_public_buckets = false
-# }
+  ingress {
+    description = "HTTP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-# # 3. Public read access to objects
-# resource "aws_s3_bucket_policy" "frontend" {
-#   bucket = "terraform-mentoring-bucket"
+  ingress {
+    description = "HTTPS"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-#   depends_on = [aws_s3_bucket_public_access_block.frontend] # 👈 ensure order
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+# Key Pair (use your existing .pem file or create a new one in AWS Console)
+# variables.tf
+variable "public_key" {
+  description = "Public key for EC2 SSH access"
+  type        = string
+}
 
-#   policy = jsonencode({
-#     Version = "2012-10-17",
-#     Statement = [
-#       {
-#         Sid       = "PublicReadGetObject",
-#         Effect    = "Allow",
-#         Principal = "*",
-#         Action    = "s3:GetObject",
-#         Resource  = "arn:aws:s3:::terraform-mentoring-bucket/*"
-#       }
-#     ]
-#   })
-# }
+# main.tf
+resource "aws_key_pair" "deployer" {
+  key_name   = "mentorship-key"
+  public_key = var.public_key
+}
+
+# EC2 Instance
+# Fetch default VPC
+data "aws_vpc" "default" {
+  default = true
+}
+
+# Fetch default subnets (this replaces aws_subnet_ids)
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+# EC2 Instance
+resource "aws_instance" "my_ec2" {
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type          = "t3.micro"
+  subnet_id              = element(data.aws_subnets.default.ids, 0) # ✅ fixed
+  key_name               = aws_key_pair.deployer.key_name
+  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+
+  tags = {
+    Name = "Terraform-Mentorship-EC2"
+  }
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              echo "Hello from Terraform EC2 instance!" > /var/www/html/index.html
+              EOF
+}
+
+output "ec2_public_ip" {
+  value = aws_instance.my_ec2.public_ip
+}
+output "ec2_public_dns" {
+  value = aws_instance.my_ec2.public_dns
+}
