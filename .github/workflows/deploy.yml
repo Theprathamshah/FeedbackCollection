@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/userdata-script
 
 jobs:
   build:
@@ -73,15 +74,14 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
 
-      - name: Import existing bucket (if not already imported)
+      - name: Import existing bucket
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform state show aws_s3_bucket.my_bucket || terraform import aws_s3_bucket.my_bucket terraform-mentoring-bucket || true
+        run: terraform import aws_s3_bucket.my_bucket terraform-mentoring-bucket || true
 
       - name: Terraform Plan
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform plan
+        run: terraform plan -var "public_key=${{ secrets.EC2_PUBLIC_KEY }}"
 
       - name: Terraform Apply
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform apply -auto-approve -var "public_key=${{ secrets.EC2_PUBLIC_KEY }}
+        run: terraform apply -auto-approve -var "public_key=${{ secrets.EC2_PUBLIC_KEY }}"
