@@ -8,8 +8,11 @@ resource "aws_s3_bucket" "my_bucket" {
   # tags = {
   #   Name = "Pratham_mentorship"
   # }
+    lifecycle {
+    prevent_destroy = true
+    ignore_changes  = all
+  }
 }
-
 resource "aws_s3_bucket_ownership_controls" "bucket_owner" {
   bucket = aws_s3_bucket.my_bucket.id
 
@@ -127,7 +130,6 @@ resource "aws_s3_object" "static_files" {
 output "website_url" {
   value = "http://${aws_s3_bucket_website_configuration.website.website_endpoint}"
 }
-
 data "aws_ami" "amazon_linux" {
   most_recent = true
   owners      = ["amazon"]
@@ -154,16 +156,8 @@ resource "aws_security_group" "ec2_sg" {
 
   ingress {
     description = "HTTP"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "HTTPS"
-    from_port   = 443
-    to_port     = 443
+    from_port   = 3000
+    to_port     = 3000
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -175,26 +169,24 @@ resource "aws_security_group" "ec2_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
-# Key Pair (use your existing .pem file or create a new one in AWS Console)
-# variables.tf
+
+# Key Pair
 variable "public_key" {
   description = "Public key for EC2 SSH access"
   type        = string
 }
 
-# main.tf
 resource "aws_key_pair" "deployer" {
   key_name   = "mentorship-key"
   public_key = var.public_key
 }
 
-# EC2 Instance
 # Fetch default VPC
 data "aws_vpc" "default" {
   default = true
 }
 
-# Fetch default subnets (this replaces aws_subnet_ids)
+# Fetch default subnets
 data "aws_subnets" "default" {
   filter {
     name   = "vpc-id"
@@ -206,27 +198,46 @@ data "aws_subnets" "default" {
 resource "aws_instance" "my_ec2" {
   ami                    = data.aws_ami.amazon_linux.id
   instance_type          = "t3.micro"
-  subnet_id              = element(data.aws_subnets.default.ids, 0) # ✅ fixed
+  subnet_id              = element(data.aws_subnets.default.ids, 0)
   key_name               = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
   tags = {
-    Name = "Terraform-Mentorship-EC2"
+    Name = "FeedbackCollection-Backend-EC2"
   }
 
   user_data = <<-EOF
               #!/bin/bash
               yum update -y
-              yum install -y httpd
-              systemctl start httpd
-              systemctl enable httpd
-              echo "Hello from Terraform EC2 instance!" > /var/www/html/index.html
+              # Install Node.js 18.x (Amazon Linux 2)
+              curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
+              yum install -y nodejs git
+
+              # Install PM2 (to keep Node app running)
+              npm install -g pm2
+
+              # Create app directory
+              mkdir -p /home/ec2-user/app
+              cd /home/ec2-user/app
+
+              # For simplicity, clone from GitHub (replace with your repo URL)
+              git clone https://github.com/Theprathamshah/FeedbackCollection.git
+              cd FeedbackCollection/backend
+
+              # Install dependencies
+              npm install
+
+              # Start the backend (assuming index.js or app.js)
+              pm2 start index.ts --name feedback-backend
+              pm2 startup systemd
+              pm2 save
               EOF
 }
 
 output "ec2_public_ip" {
   value = aws_instance.my_ec2.public_ip
 }
+
 output "ec2_public_dns" {
   value = aws_instance.my_ec2.public_dns
 }
