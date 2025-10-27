@@ -11,11 +11,11 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = "postgresql://feedback_admin:SuperSecret123@feedback-postgres-db.c46rjksfsmdo.ap-south-1.rds.amazonaws.com:5432/feedbackdb?schema=public"
 }
 
 model Feedback {
-  id        String   @id @default(cuid())
+  id        Int      @id @default(autoincrement())
   title     String
   body      String
   score     Int      @default(0)
